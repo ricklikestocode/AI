@@ -1,76 +1,87 @@
+import streamlit as st
+import os
+import tempfile
 from groq import Groq
 from gtts import gTTS
 from fpdf import FPDF
 from twilio.rest import Client
-import re
-import os
-import streamlit as st
 
-groq_api_key = "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"
-twilio_sid = "AC9fa1820b07d74e923f320ec1c7b65101"
-twilio_token = "57323d684cde0d16cff7aef800093a71"
-twilio_number = "+17439027480"
+st.set_page_config(page_title="Rutwik’s Official Excuse Generator AI", page_icon="🤖")
 
-client = Groq(api_key=groq_api_key)
+client = Groq(api_key="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")
+
+TWILIO_SID = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+TWILIO_AUTH = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+TWILIO_NUM = "+1XXXXXXXXXX"
 
 def generate_excuse(prompt, lang="en"):
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You're a helpful AI that gives creative excuses."},
-            {"role": "user", "content": f"Give me a few creative excuses for: {prompt}"}
-        ],
+    messages = [
+        {"role": "system", "content": "You generate short, creative, and believable excuses. Respond in the selected language."},
+        {"role": "user", "content": f"Give a creative and believable excuse for: {prompt}"}
+    ]
+    response = client.chat.completions.create(
         model="llama3-8b-8192",
-        temperature=0.9
+        messages=messages,
+        temperature=0.8
     )
-    return chat_completion.choices[0].message.content.strip()
+    return response.choices[0].message.content.strip()
 
-def speak_text(text, lang="en"):
-    tts = gTTS(text=text, lang=lang)
-    tts.save("excuse.mp3")
-    os.system("start excuse.mp3" if os.name == "nt" else "mpg123 excuse.mp3")
+def speak_text(text, lang='en'):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+        tts = gTTS(text=text, lang=lang)
+        tts.save(fp.name)
+        return fp.name
 
-def generate_pdf(text, filename="excuse_proof.pdf"):
-    safe_text = re.sub(r'[^\x00-\x7F]+', '', text)
+def generate_pdf(text):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, safe_text)
-    pdf.output(filename)
-    return filename
+    pdf.set_font("Arial", size=14)
+    pdf.cell(200, 10, txt="Official Excuse Document", ln=True, align="C")
+    pdf.multi_cell(0, 10, txt=text)
+    pdf_path = os.path.join(tempfile.gettempdir(), "excuse_proof.pdf")
+    pdf.output(pdf_path)
+    return pdf_path
 
-def send_sms(body, to_number):
-    client = Client(twilio_sid, twilio_token)
-    message = client.messages.create(
-        body=body,
-        from_=twilio_number,
-        to=to_number
-    )
-    return message.sid
+def send_sms(to_number, message):
+    try:
+        client = Client(TWILIO_SID, TWILIO_AUTH)
+        sms = client.messages.create(
+            body=message,
+            from_=TWILIO_NUM,
+            to=to_number
+        )
+        return True, f"✅ SMS sent! SID: {sms.sid}"
+    except Exception as e:
+        return False, f"❌ SMS failed: {e}"
 
-st.set_page_config(page_title="Rutwik’s Official Excuse Generator AI")
 st.title("🤖 Rutwik’s Official Excuse Generator AI")
-st.write("Create believable excuses, read them aloud, generate fake documents, and even send them by SMS!")
+st.markdown("Create believable excuses, read them aloud, generate fake documents, and even send them by SMS!")
 
 prompt = st.text_input("👉 What do you need an excuse for?")
-language = st.selectbox("🌐 Choose Language", ["English", "Hindi", "Telugu"])
-speak = st.checkbox("🔊 Read Aloud")
-make_pdf = st.checkbox("🧾 Generate Fake Proof PDF")
-send = st.checkbox("📨 Send via SMS")
+lang = st.selectbox("🌐 Choose Language", ["English", "Hindi", "Telugu", "Spanish", "French"])
+lang_code = {
+    "English": "en", "Hindi": "hi", "Telugu": "te", "Spanish": "es", "French": "fr"
+}[lang]
 
-if st.button("Generate Excuse") and prompt:
-    lang_map = {"English": "en", "Hindi": "hi", "Telugu": "te"}
-    lang_code = lang_map.get(language, "en")
-    excuse = generate_excuse(prompt, lang=lang_code)
-    st.markdown(f"### 🤯 Your Excuse:\n{excuse}")
-    
-    if speak:
-        speak_text(excuse, lang=lang_code)
-    if make_pdf:
+if st.button("🎯 Generate Excuse") and prompt:
+    excuse = generate_excuse(prompt, lang_code)
+    st.markdown("### ✨ Your Excuse:")
+    st.write(excuse)
+
+    if st.button("🔊 Read Aloud"):
+        audio_file = speak_text(excuse, lang=lang_code)
+        st.audio(audio_file, format="audio/mp3")
+
+    if st.button("📄 Generate Fake Proof PDF"):
         pdf_path = generate_pdf(excuse)
         with open(pdf_path, "rb") as f:
-            st.download_button("📥 Download Fake Proof", f, file_name="excuse_proof.pdf")
-    if send:
-        to_number = st.text_input("📱 Enter recipient phone number (e.g., +91...)")
-        if to_number and st.button("Send SMS"):
-            sid = send_sms(excuse, to_number)
-            st.success(f"Sent via Twilio. SID: {sid}")
+            st.download_button("📥 Download Proof PDF", f, file_name="excuse_proof.pdf")
+
+    phone_number = st.text_input("📲 Enter phone number to send via SMS")
+    if st.button("📤 Send SMS"):
+        if phone_number:
+            success, msg = send_sms(phone_number, excuse)
+            st.success(msg) if success else st.error(msg)
+            st.info("🎉 Process completed successfully. Use it again anytime!")
+        else:
+            st.warning("⚠️ Enter a valid phone number.")
