@@ -3,83 +3,109 @@ from groq import Groq
 from gtts import gTTS
 from fpdf import FPDF
 from twilio.rest import Client
-import os
 import datetime
+import os
 import base64
 
-GROQ_API_KEY = "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"
-TWILIO_SID = "AC9fa1820b07d74e923f320ec1c7b65101"
-TWILIO_AUTH = "5dfa97702492d2de2985293782814a0d"
-TWILIO_FROM = "+17439027480"
-
-client = Groq(api_key=GROQ_API_KEY)
-twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
-
-st.set_page_config(page_title="Rutwik's Official Excuse Generator AI", page_icon="🤖", layout="centered")
-st.markdown("## 🤖 Rutwik's Official Excuse Generator AI")
-st.markdown("Create believable excuses, read them aloud, generate fake documents, and even send them by SMS!")
+client = Groq(api_key="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")
+twilio_sid = "AC9fa1820b07d74e923f320ec1c7b65101"
+twilio_token = "5dfa97702492d2de2985293782814a0d"
+twilio_number = "+17439027480"
 
 history = []
 
-def generate_excuse(prompt, lang="en"):
-    chat = client.chat.completions.create(
-        model="llama3-8b-8192",
-        messages=[{"role": "user", "content": f"Give a few creative, funny, and believable excuses for: {prompt}. Keep it in {lang}"}],
-        temperature=0.9
-    )
-    return chat.choices[0].message.content.strip()
+st.set_page_config(page_title="Rutwik's Official Excuse Generator AI", page_icon="🤖", layout="centered", initial_sidebar_state="collapsed")
 
-def speak(text, lang):
-    tts = gTTS(text=text, lang=lang)
-    tts.save("excuse.mp3")
-    audio_file = open("excuse.mp3", "rb")
-    audio_bytes = audio_file.read()
-    st.audio(audio_bytes, format="audio/mp3")
+st.markdown("""
+    <style>
+    body {
+        background-color: #121212;
+    }
+    .stApp {
+        background: linear-gradient(to bottom right, #1f1f1f, #2c2c2c);
+        color: #ffffff;
+    }
+    .title-logo {
+        display: flex;
+        align-items: center;
+    }
+    .logo-text {
+        font-size: 2.2em;
+        font-weight: 700;
+        margin-left: 10px;
+    }
+    .logo-box {
+        background-color: #ff6347;
+        color: white;
+        font-weight: 800;
+        padding: 5px 12px;
+        border-radius: 8px;
+        font-size: 1.4em;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-def generate_pdf(text):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    fake_title = "Doctor's Note" if "sick" in text.lower() else "Official Document"
-    pdf.cell(200, 10, txt=fake_title, ln=1, align="C")
-    pdf.multi_cell(0, 10, txt=f"This is to certify that:\n\n{text}\n\nRegards,\nDr. Smith\nVerified Signature", align="L")
-    filename = f"excuse_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
-    pdf.output(filename)
-    with open(filename, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
-    href = f'<a href="data:application/pdf;base64,{b64}" download="{filename}">📄 Download Proof PDF</a>'
-    st.markdown(href, unsafe_allow_html=True)
+st.markdown("""
+<div class="title-logo">
+    <div class="logo-box">RS</div>
+    <div class="logo-text">Rutwik's Official Excuse Generator AI</div>
+</div>
+""", unsafe_allow_html=True)
 
-def send_sms(excuse, to_number):
-    try:
-        twilio_client.messages.create(body=excuse, from_=TWILIO_FROM, to=to_number)
-        st.success("📩 Excuse sent via SMS!")
-    except Exception as e:
-        st.error(f"SMS failed: {e}")
+st.write("\n")
+prompt = st.text_area("🌐 Enter your situation (in any language):", height=150)
+lang = st.selectbox("🌍 Choose Language for Excuse Audio", ["English", "Hindi", "Telugu", "Tamil", "Spanish"], index=0)
 
-with st.form("excuse_form"):
-    prompt = st.text_area("🌐 Enter your situation (in any language):", height=150)
-    language = st.selectbox("🌍 Choose Language", ["English", "Hindi", "Telugu", "Spanish", "French"])
-    phone = st.text_input("📱 Send SMS to (optional, include country code):")
-    submit = st.form_submit_button("Generate Excuse")
-
-if submit:
-    if prompt.strip() == "":
-        st.error("Please enter a prompt.")
-    else:
-        lang_code = {"English": "en", "Hindi": "hi", "Telugu": "te", "Spanish": "es", "French": "fr"}[language]
-        excuse = generate_excuse(prompt, lang=lang_code)
-        st.markdown("### 💡 Excuse")
-        st.write(excuse)
-        speak(excuse, lang_code)
-        generate_pdf(excuse)
-        if phone.strip():
-            send_sms(excuse, phone)
+if st.button("Generate Excuse") and prompt:
+    with st.spinner("Thinking hard... 🤔"):
+        response = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[
+                {"role": "system", "content": "You are an expert excuse generator. Always give very creative, believable, short and funny excuses."},
+                {"role": "user", "content": f"Give 1 creative excuse for: {prompt}"},
+            ],
+            temperature=0.9,
+        )
+        excuse = response.choices[0].message.content.strip()
         history.append((prompt, excuse, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
+        st.markdown(f"### 🎯 Your Excuse:\n> {excuse}")
+
+        # PDF
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=14)
+        pdf.multi_cell(0, 10, excuse)
+        filename = "excuse.pdf"
+        pdf.output(filename)
+        with open(filename, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+            st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="excuse.pdf">📄 Download Fake Proof PDF</a>', unsafe_allow_html=True)
+
+        # Audio
+        audio = gTTS(text=excuse, lang=lang[:2].lower())
+        audio.save("excuse.mp3")
+        st.audio("excuse.mp3")
+
+        # SMS
+        try:
+            recipient = st.text_input("📱 Enter recipient phone number (E.g. +91XXXXXXXXXX):")
+            if st.button("📤 Send via SMS"):
+                sms_client = Client(twilio_sid, twilio_token)
+                sms_client.messages.create(
+                    body=f"ExcuseBot: {excuse}",
+                    from_=twilio_number,
+                    to=recipient
+                )
+                st.success("✅ SMS sent successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ SMS failed: {e}")
+
+        st.success("🎉 Done! Please use the excuse responsibly.")
+
 if history:
-    st.markdown("### 📝 Excuse History")
+    st.markdown("## 📜 Excuse History")
     for item in reversed(history):
-        st.markdown(f"🕒 {item[2]}")
+        st.markdown(f"**🕒 {item[2]}**")
         st.markdown(f"❓ Prompt: {item[0]}")
-        st.markdown(f"💬 Excuse: {item[1]}")
+        st.markdown(f"💬 Excuse: \"{item[1]}\"")
