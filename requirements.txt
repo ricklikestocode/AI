@@ -1,5 +1,5 @@
 streamlit
 groq
 gtts
-fpdf
+fpdf2
 twilio
