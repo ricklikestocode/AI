@@ -1,76 +1,126 @@
-import os
+import streamlit as st
+import sqlite3
 import datetime
+from groq import Groq
 from gtts import gTTS
 from fpdf import FPDF
 from twilio.rest import Client
-import requests
+import os
 
-# Set your Groq API key
-GROQ_API_KEY = "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"
+# Initialize Groq client
+groq_api_key = "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"
+client = Groq(api_key=groq_api_key)
 
-# Twilio credentials (replace with your own)
-TWILIO_SID = "AC9fa1820b07d74e923f320ec1c7b65101"
-TWILIO_AUTH_TOKEN = "57323d684cde0d16cff7aef800093a71"
-TWILIO_FROM_NUMBER = "+17439027480"
-TO_PHONE_NUMBER = "+917207431844"
-
-def generate_excuse(prompt):
-    response = requests.post(
-        url="https://api.groq.com/openai/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "llama3-8b-8192",
-            "messages": [
-                {"role": "user", "content": f"Give a sharp, clever, and believable excuse for: {prompt}"}
-            ],
-            "temperature": 0.7
-        }
+# Initialize SQLite
+conn = sqlite3.connect("history.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS excuses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prompt TEXT,
+        excuse TEXT,
+        timestamp TEXT
     )
-    return response.json()['choices'][0]['message']['content'].strip()
+""")
+conn.commit()
 
-def speak_excuse(excuse):
-    tts = gTTS(text=excuse)
-    tts.save("excuse.mp3")
-    os.system("start excuse.mp3" if os.name == "nt" else "mpg321 excuse.mp3")
+# Title
+st.set_page_config(page_title="Rutwik's Official Excuse Generator AI", layout="centered", initial_sidebar_state="collapsed")
+st.title("😁 Rutwik's Official Excuse Generator AI")
 
-def generate_pdf(prompt, excuse):
+# Input Prompt
+st.markdown("### 🌐 Enter your situation (in any language):")
+prompt = st.text_area(" ", placeholder="e.g., I skipped school today", height=120, label_visibility="collapsed")
+
+# Main Generation Function
+def generate_excuse(prompt):
+    try:
+        response = client.chat.completions.create(
+            model="mixtral-8x7b-32768",
+            messages=[
+                {"role": "system", "content": "You are an excuse generator. Give short, believable, creative excuses."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.8,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"⚠️ Error: {e}"
+
+# Save to history
+def save_to_db(prompt, excuse):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("INSERT INTO excuses (prompt, excuse, timestamp) VALUES (?, ?, ?)", (prompt, excuse, timestamp))
+    conn.commit()
+
+# PDF Generator
+def generate_pdf_proof(text):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Excuse Document", ln=1, align='C')
-    pdf.ln(10)
-    pdf.multi_cell(0, 10, f"Prompt: {prompt}\n\nExcuse: {excuse}")
-    filename = f"excuse_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    pdf.set_font("Arial", size=14)
+    pdf.multi_cell(0, 10, txt=f"Official Excuse Document:\n\n{text}")
+    filename = "excuse_proof.pdf"
     pdf.output(filename)
     return filename
 
-def send_sms(excuse):
-    client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
+# SMS Sender
+def send_sms(number, text):
+    account_sid = "AC9fa1820b07d74e923f320ec1c7b65101"
+    auth_token = "57323d684cde0d16cff7aef800093a71"
+    twilio_number = "+17439027480"
+    client = Client(account_sid, auth_token)
     message = client.messages.create(
-        body=excuse,
-        from_=TWILIO_FROM_NUMBER,
-        to=TO_PHONE_NUMBER
+        body=f"Your excuse: {text}",
+        from_=twilio_number,
+        to=number
     )
     return message.sid
 
-def main():
-    print("\n🎤 Rutwik's Official Excuse Generator AI")
-    prompt = input("\n👉 What do you need an excuse for?\n> ")
-    excuse = generate_excuse(prompt)
-    print(f"\n🤖 Excuse: {excuse}\n")
+# Trigger generation
+excuse = None
+if st.button("🎯 Generate Excuse"):
+    if prompt.strip():
+        excuse = generate_excuse(prompt)
+        save_to_db(prompt, excuse)
+    else:
+        st.warning("Please enter a situation!")
 
-    speak_excuse(excuse)
-    pdf_file = generate_pdf(prompt, excuse)
-    print(f"📄 PDF Proof Generated: {pdf_file}")
+# Display results
+if excuse:
+    st.markdown("### 💬 Your AI-generated Excuse:")
+    st.success(excuse)
 
-    try:
-        sid = send_sms(excuse)
-        print(f"📲 SMS sent (SID: {sid})")
-    except Exception as e:
-        print(f"⚠️ SMS Error: {e}")
+    # PDF
+    if st.button("📄 Generate Fake Proof PDF"):
+        file = generate_pdf_proof(excuse)
+        with open(file, "rb") as f:
+            st.download_button("⬇️ Download PDF", f, file_name="excuse_proof.pdf")
 
-if __name__ == "__main__":
-    main()
+    # gTTS
+    if st.button("🔊 Speak the Excuse"):
+        tts = gTTS(text=excuse, lang="en")
+        tts.save("excuse.mp3")
+        audio_file = open("excuse.mp3", "rb").read()
+        st.audio(audio_file, format="audio/mp3")
+
+    # SMS
+    phone = st.text_input("📱 Enter phone number with country code:")
+    if st.button("📤 Send Excuse via SMS"):
+        if phone.strip():
+            try:
+                sid = send_sms(phone.strip(), excuse)
+                st.success("Excuse sent via SMS!")
+            except Exception as e:
+                st.error(f"SMS Error: {e}")
+        else:
+            st.warning("Please enter a valid phone number.")
+
+# Excuse History
+st.markdown("### 🧾 Excuse History")
+cursor.execute("SELECT * FROM excuses ORDER BY timestamp DESC LIMIT 10")
+rows = cursor.fetchall()
+for row in rows:
+    st.markdown(f"🕒 **{row[3]}**")
+    st.markdown(f"❓ **Prompt:** {row[1]}")
+    st.markdown(f"💭 **Excuse:** {row[2]}")
+    st.markdown("---")
