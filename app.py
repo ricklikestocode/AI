@@ -10,9 +10,9 @@ st.set_page_config(page_title="Rutwik’s Official Excuse Generator AI", page_ic
 
 client = Groq(api_key="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")
 
-TWILIO_SID = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-TWILIO_AUTH = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-TWILIO_NUM = "+1XXXXXXXXXX"
+TWILIO_SID = "AC9fa1820b07d74e923f320ec1c7b65101"
+TWILIO_AUTH = "5dfa97702492d2de2985293782814a0d"
+TWILIO_NUM = "+17439027480"
 
 def generate_excuse(prompt, lang="en"):
     messages = [
@@ -57,31 +57,30 @@ def send_sms(to_number, message):
 st.title("🤖 Rutwik’s Official Excuse Generator AI")
 st.markdown("Create believable excuses, read them aloud, generate fake documents, and even send them by SMS!")
 
-prompt = st.text_input("👉 What do you need an excuse for?")
-lang = st.selectbox("🌐 Choose Language", ["English", "Hindi", "Telugu", "Spanish", "French"])
-lang_code = {
-    "English": "en", "Hindi": "hi", "Telugu": "te", "Spanish": "es", "French": "fr"
-}[lang]
+with st.form("excuse_form"):
+    prompt = st.text_input("👉 What do you need an excuse for?")
+    lang = st.selectbox("🌐 Choose Language", ["English", "Hindi", "Telugu", "Spanish", "French"])
+    phone_number = st.text_input("📲 Optional: Enter phone number to send excuse via SMS")
+    submitted = st.form_submit_button("🎯 Generate Excuse")
 
-if st.button("🎯 Generate Excuse") and prompt:
+if submitted and prompt:
+    lang_code = {
+        "English": "en", "Hindi": "hi", "Telugu": "te", "Spanish": "es", "French": "fr"
+    }[lang]
+
     excuse = generate_excuse(prompt, lang_code)
     st.markdown("### ✨ Your Excuse:")
     st.write(excuse)
 
-    if st.button("🔊 Read Aloud"):
-        audio_file = speak_text(excuse, lang=lang_code)
-        st.audio(audio_file, format="audio/mp3")
+    audio_file = speak_text(excuse, lang=lang_code)
+    st.audio(audio_file, format="audio/mp3")
 
-    if st.button("📄 Generate Fake Proof PDF"):
-        pdf_path = generate_pdf(excuse)
-        with open(pdf_path, "rb") as f:
-            st.download_button("📥 Download Proof PDF", f, file_name="excuse_proof.pdf")
+    pdf_path = generate_pdf(excuse)
+    with open(pdf_path, "rb") as f:
+        st.download_button("📄 Download Fake PDF", f, file_name="excuse_proof.pdf")
 
-    phone_number = st.text_input("📲 Enter phone number to send via SMS")
-    if st.button("📤 Send SMS"):
-        if phone_number:
-            success, msg = send_sms(phone_number, excuse)
-            st.success(msg) if success else st.error(msg)
-            st.info("🎉 Process completed successfully. Use it again anytime!")
-        else:
-            st.warning("⚠️ Enter a valid phone number.")
+    if phone_number:
+        success, msg = send_sms(phone_number, excuse)
+        st.success(msg) if success else st.error(msg)
+
+    st.success("🎉 Done! You can use the app again anytime.")
